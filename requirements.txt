@@ -1,0 +1,3 @@
+# Module diagnostic
+psutil
+pymysql
