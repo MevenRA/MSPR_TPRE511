@@ -48,6 +48,14 @@ INSERT INTO `orders` VALUES
 /*!40000 ALTER TABLE `orders` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;
+
+--
+-- Dumping events for database 'wms'
+--
+
+--
+-- Dumping routines for database 'wms'
+--
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -58,4 +66,4 @@ commit;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-01-08 15:46:45
+-- Dump completed on 2026-01-08 17:03:10

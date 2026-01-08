@@ -20,6 +20,7 @@ EXIT_INTEGRITY_FAILED = 40
 
 
 def sha256_file(path: Path) -> str:
+    """Calcule le SHA256 d'un fichier (intégrité)."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -28,33 +29,39 @@ def sha256_file(path: Path) -> str:
 
 
 def now_timestamp_local() -> str:
-    # format horodatage simple et stable
+    """Horodatage local stable pour les noms de fichiers."""
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def write_json(path: Path, data: dict) -> None:
+    """Écrit un rapport JSON indenté."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def check_required_env(required: dict) -> list[str]:
-    return [k for k, v in required.items() if not v]
 
 
 def backup_wms():
     """
     Module Sauvegarde WMS (MariaDB)
-    - Dump SQL complet de la base via mariadb-dump
-    - Export CSV (vrai CSV virgules) d'une table critique via mariadb + conversion TSV->CSV
-    - Rapport JSON horodaté (traçabilité)
+    - Dump SQL complet via mariadb-dump
+    - Export table en CSV (virgules) via mariadb + conversion TSV->CSV
+    - Rapport JSON horodaté
     - Intégrité : taille + SHA256
     - Codes retour exploitables
     """
 
-    # --- Répertoires de sortie ---
-    # (chemins relatifs -> dépend du dossier de lancement)
-    BACKUP_DIR = Path("outputs/backups")
-    REPORT_DIR = Path("outputs/reports")
+    # ✅ Racine du projet = dossier parent de "modules"
+    # Si le fichier est: MSPR_TPRE511/modules/backup_wms.py
+    # alors PROJECT_ROOT = MSPR_TPRE511
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+    # ✅ Sorties dans /MSPR_TPRE511/outputs/...
+    BACKUP_DIR = PROJECT_ROOT / "outputs" / "backups"
+    REPORT_DIR = PROJECT_ROOT / "outputs" / "reports"
+
+    # (Débug optionnel)
+    # print("[DEBUG] PROJECT_ROOT =", PROJECT_ROOT)
+    # print("[DEBUG] BACKUP_DIR    =", BACKUP_DIR)
+    # print("[DEBUG] REPORT_DIR    =", REPORT_DIR)
 
     # --- Lecture des variables d'environnement ---
     db_host = os.getenv("WMS_DB_HOST")
@@ -63,43 +70,44 @@ def backup_wms():
     db_user = os.getenv("WMS_DB_USER")
     db_password = os.getenv("WMS_DB_PASSWORD")
 
-    table_name = os.getenv("WMS_TABLE", "orders")  # table critique (par défaut: orders)
+    # Table critique exportée (par défaut: orders)
+    table_name = os.getenv("WMS_TABLE", "orders")
 
+    # --- Vérif config ---
     required_vars = {
         "WMS_DB_HOST": db_host,
         "WMS_DB_NAME": db_name,
         "WMS_DB_USER": db_user,
         "WMS_DB_PASSWORD": db_password,
     }
-
-    missing = check_required_env(required_vars)
+    missing = [k for k, v in required_vars.items() if not v]
     if missing:
         msg = f"Variables d'environnement manquantes : {', '.join(missing)}"
         print(f"[ERREUR] {msg}")
         return EXIT_CONFIG_MISSING, {"status": "error", "error": "missing_env", "missing": missing}
 
-    # --- Vérification des outils MariaDB ---
-    if not shutil.which("mariadb-dump"):
-        msg = "mariadb-dump n'est pas installé ou non accessible dans le PATH"
-        print(f"[ERREUR] {msg}")
+    # --- Vérif outils MariaDB (Windows-friendly : .exe fallback) ---
+    dump_bin = shutil.which("mariadb-dump") or shutil.which("mariadb-dump.exe")
+    client_bin = shutil.which("mariadb") or shutil.which("mariadb.exe")
+
+    if not dump_bin:
+        print("[ERREUR] mariadb-dump n'est pas installé ou non accessible dans le PATH")
         return EXIT_TOOLS_MISSING, {"status": "error", "error": "missing_tool", "tool": "mariadb-dump"}
 
-    if not shutil.which("mariadb"):
-        msg = "client mariadb non installé ou non accessible dans le PATH"
-        print(f"[ERREUR] {msg}")
+    if not client_bin:
+        print("[ERREUR] mariadb n'est pas installé ou non accessible dans le PATH")
         return EXIT_TOOLS_MISSING, {"status": "error", "error": "missing_tool", "tool": "mariadb"}
 
     # --- Préparation ---
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = now_timestamp_local()
 
+    ts = now_timestamp_local()
     sql_file = BACKUP_DIR / f"wms_backup_{ts}.sql"
     csv_file = BACKUP_DIR / f"wms_{table_name}_{ts}.csv"
     json_report = REPORT_DIR / f"backup_wms_{ts}.json"
 
-    # Variables d'environnement pour MariaDB (évite le mot de passe en clair dans la commande)
-    # Les clients MariaDB/MySQL supportent MYSQL_PWD.
+    # Password via env (pas en clair dans la commande)
     env = os.environ.copy()
     env["MYSQL_PWD"] = db_password
 
@@ -110,21 +118,16 @@ def backup_wms():
         "module": "backup_wms",
         "status": "running",
         "started_at": started_at,
-        "db": {
-            "host": db_host,
-            "port": db_port,
-            "name": db_name,
-            "user": db_user
-        },
+        "db": {"host": db_host, "port": str(db_port), "name": db_name, "user": db_user},
         "exported_table": table_name,
         "artifacts": [],
         "messages": []
     }
 
     try:
-        # --- 1) Dump complet SQL ---
+        # --- 1) Dump SQL complet ---
         dump_cmd = [
-            "mariadb-dump",
+            dump_bin,
             "--single-transaction",
             "--routines",
             "--triggers",
@@ -136,7 +139,7 @@ def backup_wms():
         ]
 
         with open(sql_file, "w", encoding="utf-8") as f:
-            proc = subprocess.run(
+            subprocess.run(
                 dump_cmd,
                 stdout=f,
                 stderr=subprocess.PIPE,
@@ -144,12 +147,9 @@ def backup_wms():
                 check=True
             )
 
-        # --- 2) Export table (TSV) puis conversion -> CSV ---
-        # --batch : format tabulé
-        # --raw   : moins d'échappement
-        # On conserve les noms de colonnes : première ligne = header
+        # --- 2) Export table : TSV via mariadb, puis conversion -> CSV virgule ---
         export_cmd = [
-            "mariadb",
+            client_bin,
             "-h", db_host,
             "-P", str(db_port),
             "-u", db_user,
@@ -159,7 +159,7 @@ def backup_wms():
             db_name
         ]
 
-        proc2 = subprocess.run(
+        proc = subprocess.run(
             export_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -170,14 +170,14 @@ def backup_wms():
             errors="replace"
         )
 
-        lines = proc2.stdout.splitlines()
+        lines = proc.stdout.splitlines()
         if not lines:
             raise RuntimeError(f"Export table '{table_name}' vide (aucune sortie)")
 
         header = lines[0].split("\t")
         rows = [ln.split("\t") for ln in lines[1:]]
 
-        # Conversion \N (NULL) -> vide (optionnel, mais pratique)
+        # Conversion de \N (NULL MySQL/MariaDB) vers chaîne vide
         def norm(v: str) -> str:
             return "" if v == r"\N" else v
 
@@ -187,29 +187,26 @@ def backup_wms():
             for r in rows:
                 writer.writerow([norm(c) for c in r])
 
-        # --- 3) Vérification intégrité (taille + hash) ---
+        # --- 3) Intégrité : taille + sha256 ---
         for p in (sql_file, csv_file):
             if not p.exists() or p.stat().st_size <= 0:
                 raise RuntimeError(f"Fichier invalide ou vide : {p.name}")
-
             report["artifacts"].append({
                 "path": str(p),
                 "size_bytes": p.stat().st_size,
                 "sha256": sha256_file(p)
             })
 
-        # --- Fin / Rapport ---
-        ended_at = datetime.datetime.now().isoformat()
         report["status"] = "ok"
-        report["ended_at"] = ended_at
+        report["ended_at"] = datetime.datetime.now().isoformat()
         report["duration_seconds"] = round(time.time() - t0, 3)
 
         write_json(json_report, report)
 
         print("[OK] Sauvegarde WMS réussie")
-        print(f"     - Dump SQL  : {sql_file}")
-        print(f"     - Export CSV: {csv_file}")
-        print(f"     - Rapport   : {json_report}")
+        print(f"     - Dump SQL   : {sql_file}")
+        print(f"     - Export CSV : {csv_file}")
+        print(f"     - Rapport    : {json_report}")
 
         return EXIT_OK, report
 
@@ -223,10 +220,9 @@ def backup_wms():
 
         write_json(json_report, report)
 
-        print("[ERREUR] Échec d'une commande MariaDB")
+        print("[ERREUR] Échec de la commande MariaDB")
         if err:
             print(err)
-
         return EXIT_CMD_FAILED, report
 
     except Exception as e:
@@ -243,6 +239,5 @@ def backup_wms():
 
 
 if __name__ == "__main__":
-    code, _report = backup_wms()
+    code, _ = backup_wms()
     raise SystemExit(code)
-

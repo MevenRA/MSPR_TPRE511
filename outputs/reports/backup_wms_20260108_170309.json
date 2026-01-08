@@ -1,0 +1,27 @@
+{
+  "module": "backup_wms",
+  "status": "ok",
+  "started_at": "2026-01-08T17:03:09.764865",
+  "db": {
+    "host": "192.168.10.203",
+    "port": "3306",
+    "name": "wms",
+    "user": "wmsuser"
+  },
+  "exported_table": "orders",
+  "artifacts": [
+    {
+      "path": "C:\\Cours\\Bachelor Sysops\\MSPR\\TPRE511\\MSPR_TPRE511\\outputs\\backups\\wms_backup_20260108_170309.sql",
+      "size_bytes": 2513,
+      "sha256": "bbb65547a348b80be5d314cda8d0aefd6d569752ac1ca1f3abdd774feae534c4"
+    },
+    {
+      "path": "C:\\Cours\\Bachelor Sysops\\MSPR\\TPRE511\\MSPR_TPRE511\\outputs\\backups\\wms_orders_20260108_170309.csv",
+      "size_bytes": 228,
+      "sha256": "b6fdba4de932949e8146dc5058fcf36c019f2c711c7f2d79a526256911400227"
+    }
+  ],
+  "messages": [],
+  "ended_at": "2026-01-08T17:03:10.671541",
+  "duration_seconds": 0.907
+}
