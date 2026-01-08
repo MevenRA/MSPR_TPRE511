@@ -1,0 +1,4 @@
+id,client_name,product,quantity,status,created_at
+1,CLient A,Palettes bois,10,expédiée,2025-12-17 12:16:30
+2,Client B,Carton,50,en préparation,2025-12-17 12:16:30
+3,CLient C,Film plastique,100,livrée,2025-12-17 12:16:30
