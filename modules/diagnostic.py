@@ -7,8 +7,17 @@ import socket
 import ipaddress
 import json
 import getpass
+import subprocess
 from utils.logger import setup_logger, write_json_report
 from utils.config import ConfigLoader
+from utils.credentials import get_credentials
+
+try:
+    import paramiko
+    PARAMIKO_AVAILABLE = True
+except ImportError:
+    PARAMIKO_AVAILABLE = False
+    print("[WARNING] paramiko not installed. SSH metrics collection will be disabled.")
 
 logger = setup_logger("diagnostic")
 
@@ -131,8 +140,133 @@ def expand_ip_range(ip_range_str):
             ips.append(part)
     return ips
 
-def check_server_availability(ip):
-    """Checks if a server is online by probing common ports."""
+def get_remote_metrics_ssh(ip, username, password):
+    """Collects metrics from a remote Linux server via SSH."""
+    if not PARAMIKO_AVAILABLE:
+        return None, "paramiko not installed"
+    
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(ip, username=username, password=password, timeout=5)
+        
+        metrics = {}
+        
+        # Get OS version
+        stdin, stdout, stderr = client.exec_command('cat /etc/os-release | grep PRETTY_NAME')
+        os_line = stdout.read().decode().strip()
+        metrics['os_version'] = os_line.split('=')[1].strip('"') if '=' in os_line else 'Linux'
+        
+        # Get uptime (in seconds)
+        stdin, stdout, stderr = client.exec_command('cat /proc/uptime')
+        uptime_line = stdout.read().decode().strip()
+        uptime_sec = int(float(uptime_line.split()[0]))
+        metrics['uptime_seconds'] = uptime_sec
+        
+        # Get CPU usage (approximate)
+        stdin, stdout, stderr = client.exec_command('top -bn1 | grep "Cpu(s)" | awk \'{print $2}\' | cut -d"%" -f1')
+        cpu_str = stdout.read().decode().strip()
+        metrics['cpu_percent'] = float(cpu_str) if cpu_str else 0.0
+        
+        # Get memory usage
+        stdin, stdout, stderr = client.exec_command('free | grep Mem | awk \'{print ($3/$2) * 100.0}\'')
+        mem_str = stdout.read().decode().strip()
+        metrics['memory_percent'] = float(mem_str) if mem_str else 0.0
+        
+        # Get disk usage
+        stdin, stdout, stderr = client.exec_command('df -h / | tail -1 | awk \'{print $5}\' | cut -d"%" -f1')
+        disk_str = stdout.read().decode().strip()
+        metrics['disk_percent'] = float(disk_str) if disk_str else 0.0
+        
+        client.close()
+        return metrics, None
+    except Exception as e:
+        return None, str(e)
+
+def get_remote_metrics_powershell(ip, username, password):
+    """Collects metrics from a remote Windows server via PowerShell Invoke-Command."""
+    try:
+        metrics = {}
+        
+        # Use Invoke-Command for proper WinRM remoting
+        # This approach handles credentials and WinRM sessions correctly
+        ps_script = f"""
+$SecPassword = ConvertTo-SecureString '{password}' -AsPlainText -Force
+$Cred = New-Object System.Management.Automation.PSCredential ('{username}', $SecPassword)
+
+try {{
+    $result = Invoke-Command -ComputerName {ip} -Credential $Cred -ScriptBlock {{
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem
+        $cpu = Get-CimInstance -ClassName Win32_Processor
+        $disk = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'"
+        
+        [PSCustomObject]@{{
+            os_version = $os.Caption
+            uptime_seconds = [int]((Get-Date) - $os.LastBootUpTime).TotalSeconds
+            cpu_percent = if ($cpu.LoadPercentage) {{ ($cpu.LoadPercentage | Measure-Object -Average).Average }} else {{ 0 }}
+            memory_percent = if ($os.TotalVisibleMemorySize -gt 0) {{
+                (($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100
+            }} else {{ 0 }}
+            disk_percent = if ($disk.Size -gt 0) {{
+                (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100
+            }} else {{ 0 }}
+        }}
+    }} -ErrorAction Stop
+    
+    $result | ConvertTo-Json -Compress
+}} catch {{
+    Write-Output "ERROR: $($_.Exception.Message)"
+    exit 1
+}}
+"""
+        
+        # Execute PowerShell command
+        result = subprocess.run(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        
+        if result.returncode != 0:
+            # Extract clean error message instead of dumping entire script
+            error_msg = "WinRM connection failed"
+            
+            if result.stdout and "ERROR:" in result.stdout:
+                # Get custom error message from script
+                error_msg = result.stdout.split("ERROR:")[-1].strip()
+            elif result.stderr:
+                # Extract last meaningful line from stderr
+                lines = [l.strip() for l in result.stderr.split('\n') if l.strip() and not l.startswith('$')]
+                for line in reversed(lines):
+                    if any(keyword in line for keyword in ['cannot', 'failed', 'error', 'impossible', 'denied']):
+                        error_msg = line[:100]  # Limit length
+                        break
+                else:
+                    if lines:
+                        error_msg = lines[-1][:100]
+            
+            return None, error_msg
+        
+        # Parse JSON output
+        import json
+        data = json.loads(result.stdout.strip())
+        
+        metrics['os_version'] = data.get('os_version', 'Windows')
+        metrics['uptime_seconds'] = int(data.get('uptime_seconds', 0))
+        metrics['cpu_percent'] = float(data.get('cpu_percent', 0))
+        metrics['memory_percent'] = float(data.get('memory_percent', 0))
+        metrics['disk_percent'] = float(data.get('disk_percent', 0))
+        
+        return metrics, None
+        
+    except json.JSONDecodeError as e:
+        return None, f"Failed to parse response"
+    except Exception as e:
+        return None, f"PowerShell error: {str(e)[:50]}"
+
+def check_server_availability(ip, ssh_user=None, ssh_pass=None, win_user=None, win_pass=None):
+    """Checks if a server is online and collects detailed metrics if credentials are provided."""
     # Ports: SSH(22), DNS(53), HTTP(80), RPC(135), HTTPS(443), RDP(3389)
     common_ports = {
         22: "Linux/SSH",
@@ -158,11 +292,50 @@ def check_server_availability(ip):
                 if port in [135, 3389]: detected_os = "Likely Windows"
         except:
             pass
-            
-    if open_ports:
-        return True, "Online", detected_os, ", ".join(open_ports)
-    else:
-        return False, "Offline", "Unknown", "No open ports found"
+    
+    if not open_ports:
+        return False, "Offline", "Unknown", "No open ports found", {}
+    
+    # Attempt to get detailed metrics if credentials are provided
+    metrics = {}
+    
+    if detected_os == "Likely Linux" and ssh_user and ssh_pass:
+        remote_metrics, error = get_remote_metrics_ssh(ip, ssh_user, ssh_pass)
+        if remote_metrics:
+            metrics = remote_metrics
+            detected_os = remote_metrics.get('os_version', 'Linux')
+        elif error:
+            logger.debug(f"SSH metrics collection failed for {ip}: {error}")
+    
+    elif detected_os == "Likely Windows" and win_user and win_pass:
+        remote_metrics, error = get_remote_metrics_powershell(ip, win_user, win_pass)
+        if remote_metrics:
+            metrics = remote_metrics
+            detected_os = remote_metrics.get('os_version', 'Windows')
+        elif error:
+            logger.debug(f"Windows metrics collection failed for {ip}: {error}")
+    
+    # Fallback: If OS is Unknown but credentials provided, try both methods
+    elif detected_os == "Unknown" and (ssh_user or win_user):
+        # Try SSH first
+        if ssh_user and ssh_pass:
+            remote_metrics, error = get_remote_metrics_ssh(ip, ssh_user, ssh_pass)
+            if remote_metrics:
+                metrics = remote_metrics
+                detected_os = remote_metrics.get('os_version', 'Linux')
+            elif error:
+                logger.debug(f"SSH attempt on {ip} failed: {error}")
+        
+        # If SSH failed or not provided, try PowerShell
+        if not metrics and win_user and win_pass:
+            remote_metrics, error = get_remote_metrics_powershell(ip, win_user, win_pass)
+            if remote_metrics:
+                metrics = remote_metrics
+                detected_os = remote_metrics.get('os_version', 'Windows')
+            elif error:
+                logger.debug(f"PowerShell attempt on {ip} failed: {error}")
+    
+    return True, "Online", detected_os, ", ".join(open_ports), metrics
 
 def run_diagnostic():
     """Main interactive diagnostic function."""
@@ -194,9 +367,48 @@ def run_diagnostic():
 
     # 3. Server Range Configuration
     check_ips = []
+    ssh_user = None
+    ssh_pass = None
+    win_user = None
+    win_pass = None
+    
     ip_input = input("Enter IP range to scan (e.g., 192.168.1.10-15 or 192.168.1.5, 192.168.1.6): ").strip()
     if ip_input:
         check_ips = expand_ip_range(ip_input)
+        
+        # Ask for credentials if scanning servers
+        if check_ips:
+            collect_creds = input("Collect detailed metrics (CPU/RAM/Disk)? Requires credentials. (y/n, default n): ").strip().lower()
+            if collect_creds == 'y':
+                # Load credentials from environment or encrypted file first
+                stored_creds = get_credentials()
+                
+                # Use stored credentials or prompt for missing ones
+                ssh_user = stored_creds.get('ssh_user')
+                ssh_pass = stored_creds.get('ssh_pass')
+                win_user = stored_creds.get('win_user')
+                win_pass = stored_creds.get('win_pass')
+                
+                # Only prompt for credentials that weren't found
+                if not ssh_user:
+                    ssh_user = input("SSH Username (for Linux servers, leave empty to skip): ").strip() or None
+                else:
+                    print(f"SSH Username: {ssh_user} (from stored credentials)")
+                    
+                if ssh_user and not ssh_pass:
+                    ssh_pass = getpass.getpass("SSH Password: ")
+                elif ssh_user:
+                    print("SSH Password: ******* (from stored credentials)")
+                
+                if not win_user:
+                    win_user = input("Windows Username (for Windows servers, leave empty to skip): ").strip() or None
+                else:
+                    print(f"Windows Username: {win_user} (from stored credentials)")
+                    
+                if win_user and not win_pass:
+                    win_pass = getpass.getpass("Windows Password: ")
+                elif win_user:
+                    print("Windows Password: ******* (from stored credentials)")
 
     print("\n--- Starting Diagnostic ---")
     
@@ -232,22 +444,39 @@ def run_diagnostic():
     for ip in check_ips:
         print(f" -> Scanning {ip}...", end=" ")
         
-        is_online, status_txt, os_guess, ports = check_server_availability(ip)
+        is_online, status_txt, os_guess, ports, metrics = check_server_availability(
+            ip, ssh_user=ssh_user, ssh_pass=ssh_pass, win_user=win_user, win_pass=win_pass
+        )
         
         status = "OK" if is_online else "CRITICAL"
         color_status = status_txt
         
-        print(f"{color_status} [{os_guess}] - Ports: {ports}")
+        # Display metrics if available
+        if metrics:
+            cpu = metrics.get('cpu_percent', 'N/A')
+            ram = metrics.get('memory_percent', 'N/A')
+            disk = metrics.get('disk_percent', 'N/A')
+            uptime = metrics.get('uptime_seconds', 'N/A')
+            print(f"{color_status} [{os_guess}] - CPU: {cpu}%, RAM: {ram}%, Disk: {disk}%, Uptime: {uptime}s")
+        else:
+            print(f"{color_status} [{os_guess}] - Ports: {ports}")
+            if ssh_user or win_user:
+                print(f"    └─ Metrics collection failed (check logs for details)")
         
-        report_data["server_scans"].append({
+        scan_entry = {
             "ip": ip,
             "status": status,
             "os_detected": os_guess,
             "details": ports
-        })
+        }
+        
+        if metrics:
+            scan_entry["metrics"] = metrics
+        
+        report_data["server_scans"].append(scan_entry)
 
     # Save Report
-    report_path = write_json_report("diagnostic_report.json", report_data)
+    report_path = write_json_report("diagnostic_report.json", report_data, subdirectory="diagnostic")
     print(f"\n[Diagnostic] Completed. Report saved to: {report_path}")
     return "DONE"
 
