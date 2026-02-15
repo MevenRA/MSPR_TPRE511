@@ -1,3 +1,9 @@
 # Module diagnostic
 psutil
 pymysql
+
+# Module Audit 
+# Installer nmap
+requests 
+tabulate 
+scapy
