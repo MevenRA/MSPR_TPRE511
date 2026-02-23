@@ -1,9 +1,11 @@
 # Module diagnostic
 psutil
 pymysql
+paramiko
+cryptography
 
-# Module Audit 
+# Module audit 
 # Installer nmap
-requests 
-tabulate 
-scapy
+requests
+tabulate
+scrapy

@@ -249,7 +249,6 @@ try {{
             return None, error_msg
         
         # Parse JSON output
-        import json
         data = json.loads(result.stdout.strip())
         
         metrics['os_version'] = data.get('os_version', 'Windows')
