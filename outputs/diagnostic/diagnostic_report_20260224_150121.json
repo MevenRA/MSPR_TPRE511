@@ -1,0 +1,43 @@
+{
+    "timestamp": "2026-02-24 15:01:12",
+    "ad_dns_checks": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "message": "AD/DNS 192.168.60.1: DNS(53): OK, LDAP(389): OK"
+        }
+    ],
+    "mysql_check": {
+        "ip": "192.168.10.209",
+        "status": "OK",
+        "message": "MySQL at 192.168.10.209 is reachable (Port 3306 Open)"
+    },
+    "server_scans": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "os_detected": "Microsoft Windows Server 2025 Standard",
+            "details": "Windows/RPC(135), DNS(53)",
+            "metrics": {
+                "os_version": "Microsoft Windows Server 2025 Standard",
+                "uptime_seconds": 90210,
+                "cpu_percent": 2.5,
+                "memory_percent": 31.322639901487843,
+                "disk_percent": 20.642617824107038
+            }
+        },
+        {
+            "ip": "192.168.10.209",
+            "status": "OK",
+            "os_detected": "Debian GNU/Linux 13 (trixie)",
+            "details": "Linux/SSH(22)",
+            "metrics": {
+                "os_version": "Debian GNU/Linux 13 (trixie)",
+                "uptime_seconds": 789295,
+                "cpu_percent": 0.0,
+                "memory_percent": 55.9217,
+                "disk_percent": 19.0
+            }
+        }
+    ]
+}

@@ -1,0 +1,17 @@
+{
+    "timestamp": "2026-02-23 15:36:29",
+    "ad_dns_checks": [],
+    "mysql_check": {
+        "ip": "192.168.60.50",
+        "status": "CRITICAL",
+        "message": "MySQL at 192.168.60.50 auth failed: (2003, \"Can't connect to MySQL server on '192.168.60.50' (timed out)\")"
+    },
+    "server_scans": [
+        {
+            "ip": "192.168.50.10",
+            "status": "OK",
+            "os_detected": "Unknown",
+            "details": "HTTP(80), HTTPS(443)"
+        }
+    ]
+}

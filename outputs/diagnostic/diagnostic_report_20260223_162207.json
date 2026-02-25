@@ -1,0 +1,42 @@
+{
+    "timestamp": "2026-02-23 16:21:17",
+    "ad_dns_checks": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "message": "AD/DNS 192.168.60.1: DNS(53): OK, LDAP(389): OK"
+        }
+    ],
+    "mysql_check": {
+        "ip": "192.168.10.209",
+        "status": "OK",
+        "message": "MySQL at 192.168.10.209 is reachable (Port 3306 Open)"
+    },
+    "server_scans": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "os_detected": "Microsoft Windows Server 2025 Standard",
+            "details": "Windows/RPC(135), DNS(53)",
+            "metrics": {
+                "os_version": "Microsoft Windows Server 2025 Standard",
+                "uptime_seconds": 8615,
+                "cpu_percent": 1.5,
+                "memory_percent": 30.365619023758416,
+                "disk_percent": 20.418729134218257
+            }
+        },
+        {
+            "ip": "192.168.60.2",
+            "status": "OK",
+            "os_detected": "Unknown",
+            "details": "HTTP(80), HTTPS(443)"
+        },
+        {
+            "ip": "192.168.60.3",
+            "status": "OK",
+            "os_detected": "Unknown",
+            "details": "HTTP(80), HTTPS(443)"
+        }
+    ]
+}

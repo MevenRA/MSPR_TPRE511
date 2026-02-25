@@ -1,0 +1,73 @@
+{
+    "timestamp": "2026-02-24 16:15:48",
+    "ad_dns_checks": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "message": "AD/DNS 192.168.60.1: DNS(53): OK, LDAP(389): OK"
+        },
+        {
+            "ip": "192.168.60.2",
+            "status": "OK",
+            "message": "AD/DNS 192.168.60.2: DNS(53): OK, LDAP(389): OK"
+        }
+    ],
+    "mysql_check": {
+        "ip": "192.168.60.209",
+        "status": "CRITICAL",
+        "message": "MySQL at 192.168.60.209 unreachable on port 3306"
+    },
+    "server_scans": [
+        {
+            "ip": "192.168.60.1",
+            "status": "OK",
+            "os_detected": "Microsoft Windows Server 2025 Standard",
+            "details": "Windows/RPC(135), DNS(53)",
+            "metrics": {
+                "os_version": "Microsoft Windows Server 2025 Standard",
+                "uptime_seconds": 94690,
+                "cpu_percent": 1.0,
+                "memory_percent": 32.07212165826224,
+                "disk_percent": 20.64769510457919
+            }
+        },
+        {
+            "ip": "192.168.60.2",
+            "status": "OK",
+            "os_detected": "Microsoft Windows Server 2025 Standard",
+            "details": "Windows/RPC(135), DNS(53)",
+            "metrics": {
+                "os_version": "Microsoft Windows Server 2025 Standard",
+                "uptime_seconds": 22916,
+                "cpu_percent": 1.0,
+                "memory_percent": 32.46648246793922,
+                "disk_percent": 31.081068109122462
+            }
+        },
+        {
+            "ip": "192.168.60.3",
+            "status": "CRITICAL",
+            "os_detected": "Unknown",
+            "details": "No open ports found"
+        },
+        {
+            "ip": "192.168.60.4",
+            "status": "CRITICAL",
+            "os_detected": "Unknown",
+            "details": "No open ports found"
+        },
+        {
+            "ip": "192.168.10.209",
+            "status": "OK",
+            "os_detected": "Debian GNU/Linux 13 (trixie)",
+            "details": "Linux/SSH(22)",
+            "metrics": {
+                "os_version": "Debian GNU/Linux 13 (trixie)",
+                "uptime_seconds": 793788,
+                "cpu_percent": 0.0,
+                "memory_percent": 55.2525,
+                "disk_percent": 19.0
+            }
+        }
+    ]
+}
